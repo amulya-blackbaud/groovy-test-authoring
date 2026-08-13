@@ -23,6 +23,8 @@ REPO     = os.environ.get("ADO_REPO", "receipt-manager")
 API      = "7.1"
 RESOLVED = {"fixed", "closed", "byDesign"}          # what "resolved" means in ADO
 SOURCE_SETS = {"test", "coreTest", "componentTest", "sharedTest"}
+BOTS = {"CodeRabbit"}                               # review bots — skipped by default
+INCLUDE_BOTS = os.environ.get("INCLUDE_BOTS", "").lower() in ("1", "true", "yes")
 
 ROOT  = Path(__file__).resolve().parent.parent
 STATE = ROOT / "harvest" / "state.json"
@@ -63,13 +65,19 @@ def classify(path):
     return None
 
 
-def first_human_comment(thread):
+def first_relevant_comment(thread):
+    """First substantive comment from a human reviewer (skips TFS system notes and,
+    unless INCLUDE_BOTS is set, review bots like CodeRabbit)."""
     for c in thread.get("comments", []):
         author  = c.get("author", {}).get("displayName", "?")
         content = (c.get("content") or "").strip()
-        if content and c.get("commentType", "text") != "system" \
-           and author != "Microsoft.VisualStudio.Services.TFS":
-            return author, content
+        if not content or c.get("commentType", "text") == "system":
+            continue
+        if author == "Microsoft.VisualStudio.Services.TFS":
+            continue
+        if author in BOTS and not INCLUDE_BOTS:
+            continue
+        return author, content
     return None, None
 
 
@@ -92,7 +100,7 @@ def main():
             src = classify(path)
             if not src:
                 continue
-            author, content = first_human_comment(th)
+            author, content = first_relevant_comment(th)
             if not content:
                 continue
             candidates.append({
