@@ -1,0 +1,5 @@
+{
+  "last_pr_id": 560809,
+  "note": "Seeded 2026-08-13 for the first controlled run: only PRs newer than 560809 are scanned (i.e. the latest receipt-manager PR(s)). The harvest advances this value automatically on each run.",
+  "updated": "2026-08-13"
+}
