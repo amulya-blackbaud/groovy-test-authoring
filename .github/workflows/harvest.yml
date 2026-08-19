@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
   harvest:
@@ -24,22 +25,38 @@ jobs:
           git config user.name "rule-harvest[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Skip if a harvest PR is already open
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          n=$(gh pr list --state open --base develop --json headRefName \
+               --jq '[.[] | select(.headRefName | startswith("rules/harvest-"))] | length')
+          echo "open=$n" >> "$GITHUB_OUTPUT"
+          if [ "$n" -gt 0 ]; then echo "::notice::A harvest PR is already open — skipping this run."; fi
+
       - name: Set up Python
+        if: steps.guard.outputs.open == '0'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Fetch ADO candidates
+        if: steps.guard.outputs.open == '0'
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
         run: python scripts/harvest_fetch.py
 
-      - name: Analyze candidates and open PR (Claude)
+      - name: Analyze candidates — Claude edits the rule files
+        if: steps.guard.outputs.open == '0'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: "Read .github/harvest-prompt.md and follow it exactly."
-          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep"
+          claude_args: "--allowedTools Read,Write,Edit,Glob,Grep"
+
+      - name: Open pull request for new rules
+        if: steps.guard.outputs.open == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/harvest_finalize.py
